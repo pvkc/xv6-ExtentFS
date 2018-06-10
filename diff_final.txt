@@ -1,0 +1,255 @@
+Only in Desktop/xv6/: assign4.c
+Only in Desktop/xv6/: .cvsignore
+Only in Desktop/xv6/: .dir-locals.el
+diff -uw Desktop/xv6/fcntl.h xv6-public-orig/fcntl.h
+--- Desktop/xv6/fcntl.h	2017-11-28 21:03:00.855175386 -0600
++++ xv6-public-orig/fcntl.h	2017-10-07 19:17:23.727655926 -0500
+@@ -2,10 +2,3 @@
+ #define O_WRONLY  0x001
+ #define O_RDWR    0x002
+ #define O_CREATE  0x200
+-#define O_EXTENT  0x020
+-
+-#define SEEK_SET   0
+-#define SEEK_CUR   1
+-#define SEEK_END   2
+-#define SEEK_DATA  3
+-#define SEEK_HOLE  4
+diff -uw Desktop/xv6/fs.c xv6-public-orig/fs.c
+--- Desktop/xv6/fs.c	2017-11-28 12:09:30.000000000 -0600
++++ xv6-public-orig/fs.c	2017-10-07 19:17:23.727655926 -0500
+@@ -370,60 +370,12 @@
+ 
+ // Return the disk block address of the nth block in inode ip.
+ // If there is no such block, bmap allocates one.
+-
+-// The first 24 bits are addres
+-#define EXT_ADDR(addr) (addr >> (32-24))
+-// The last byte is the length
+-#define EXT_LEN(addr) (addr & 0x00ff)
+-// Generate addres from block number and length
+-#define GEN_ADDR(bn,len) (bn << 8 | len)
+ static uint
+ bmap(struct inode *ip, uint bn)
+ {
+   uint addr, *a;
+   struct buf *bp;
+ 
+-  if (ip->type == T_EXT_FILE){
+-    // Check if the block is already in use
+-    int i = 0;
+-    uint currLen = 0;
+-    //cprintf("Requested block:%d.", bn);
+-    while(ip->addrs[i]){
+-      uint length = EXT_LEN(ip->addrs[i]);
+-
+-      if (bn >= currLen && bn < length + currLen){
+-            //cprintf("Existing block found: %d; Addr:%d; Len: %d\n", bn, EXT_ADDR(ip->addrs[i]), EXT_LEN(ip->addrs[i]), i);
+-            addr = EXT_ADDR(ip->addrs[i]) +  bn - currLen;
+-            return addr;
+-      }
+-
+-      currLen += length;
+-      i++;
+-      if (i > NDIRECT)
+-        break;
+-    }
+-  
+-    if(i > NDIRECT){
+-       panic("Extent file allocation exceeded\n");
+-      return EXT_ADDR(ip->addrs[i-1]);
+-    }
+-
+-    uint newDiskBlock = balloc(ip->dev);
+-    // Check if newAddr is contiguos w.r.t to the previous extent
+-        uint len = EXT_LEN(ip->addrs[i-1]);
+-      if( (newDiskBlock == EXT_ADDR(ip->addrs[i-1]) + len)  && EXT_LEN(ip->addrs[i-1]) < 0xff){
+-        //len += 1;
+-        ip->addrs[i-1]  += 1;
+-        //cprintf("Appending to existing block %d. Addr:%d; Len: %d\n", i-1, EXT_ADDR(ip->addrs[i-1]), EXT_LEN(ip->addrs[i-1]));
+-      }
+-      else{
+-     // if not, add a new entry in the table
+-      ip->addrs[i] = GEN_ADDR(newDiskBlock, 1); 
+-      //cprintf("New address %d. At addr table %d\n", newDiskBlock, i);
+-      }
+-   return newDiskBlock;
+-  }
+-
+   if(bn < NDIRECT){
+     if((addr = ip->addrs[bn]) == 0)
+       ip->addrs[bn] = addr = balloc(ip->dev);
+@@ -460,22 +412,6 @@
+   struct buf *bp;
+   uint *a;
+   
+-  // Code to clean Extent files
+-  if (ip->type == T_EXT_FILE){
+-    for(i = 0; i < NDIRECT; i++){
+-      if(ip->addrs[i]){
+-        uint len = EXT_LEN(ip->addrs[i]);
+-        for(j = 0; j < len; j++){
+-          bfree(ip->dev, EXT_ADDR(ip->addrs[i]) + j);
+-          // cprintf("Freeing block: %d\n", EXT_ADDR(ip->addrs[i]) + j);
+-        }
+-        ip->addrs[i] = 0;
+-      }
+-    }
+-
+-    return;
+-  }
+-
+   for(i = 0; i < NDIRECT; i++){
+     if(ip->addrs[i]){
+       bfree(ip->dev, ip->addrs[i]);
+@@ -509,16 +445,6 @@
+   st->type = ip->type;
+   st->nlink = ip->nlink;
+   st->size = ip->size;
+-  
+-  // Get more info for extent files
+-  int i = 0;
+-  if (st->type == T_EXT_FILE){
+-    for(i = 0; i < NDIRECT; i++)
+-    {
+-      st->extents[i].addr = EXT_ADDR(ip->addrs[i]);
+-      st->extents[i].len  = EXT_LEN(ip->addrs[i]);
+-    }
+-  }
+ }
+ 
+ //PAGEBREAK!
+@@ -567,11 +493,10 @@
+ 
+   if(off > ip->size || off + n < off)
+     return -1;
+-  if((off + n > MAXFILE*BSIZE) && ip->type != T_EXT_FILE)
++  if(off + n > MAXFILE*BSIZE)
+     return -1;
+ 
+   for(tot=0; tot<n; tot+=m, off+=m, src+=m){
+-    // cprintf("Calling bmap from writei\n");
+     bp = bread(ip->dev, bmap(ip, off/BSIZE));
+     m = min(n - tot, BSIZE - off%BSIZE);
+     memmove(bp->data + off%BSIZE, src, m);
+@@ -585,6 +510,7 @@
+   }
+   return n;
+ }
++
+ //PAGEBREAK!
+ // Directories
+ 
+Only in Desktop/xv6/: .gdbinit.tmpl
+Only in Desktop/xv6/: .git
+Only in Desktop/xv6/: .gitignore
+diff -uw Desktop/xv6/Makefile xv6-public-orig/Makefile
+--- Desktop/xv6/Makefile	2017-11-25 20:53:56.000000000 -0600
++++ xv6-public-orig/Makefile	2017-10-07 19:17:23.727655926 -0500
+@@ -159,7 +159,6 @@
+ .PRECIOUS: %.o
+ 
+ UPROGS=\
+-	_assign4\
+ 	_cat\
+ 	_echo\
+ 	_forktest\
+@@ -242,7 +241,7 @@
+ # check in that version.
+ 
+ EXTRA=\
+-	mkfs.c ulib.c user.h assign4.c cat.c echo.c forktest.c grep.c kill.c\
++	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
+ 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
+ 	printf.c umalloc.c\
+ 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
+diff -uw Desktop/xv6/mkfs.c xv6-public-orig/mkfs.c
+--- Desktop/xv6/mkfs.c	2017-11-28 19:59:36.766326467 -0600
++++ xv6-public-orig/mkfs.c	2017-10-07 19:17:23.727655926 -0500
+@@ -6,7 +6,6 @@
+ #include <assert.h>
+ 
+ #define stat xv6_stat  // avoid clash with host struct stat
+-#define off_t xv6_off_t
+ #include "types.h"
+ #include "fs.h"
+ #include "stat.h"
+diff -uw Desktop/xv6/stat.h xv6-public-orig/stat.h
+--- Desktop/xv6/stat.h	2017-11-28 09:23:22.000000000 -0600
++++ xv6-public-orig/stat.h	2017-10-07 19:17:23.735655476 -0500
+@@ -1,7 +1,6 @@
+ #define T_DIR  1   // Directory
+ #define T_FILE 2   // File
+ #define T_DEV  3   // Device
+-#define T_EXT_FILE 4 // Extent based file
+ 
+ struct stat {
+   short type;  // Type of file
+@@ -9,8 +8,4 @@
+   uint ino;    // Inode number
+   short nlink; // Number of links to file
+   uint size;   // Size of file in bytes
+-  struct extents_details{
+-    uint addr:24, // Extent Pointers
+-         len:8 ;  // Extent Length 
+-  }extents[12];
+ };
+diff -uw Desktop/xv6/sysfile.c xv6-public-orig/sysfile.c
+--- Desktop/xv6/sysfile.c	2017-11-28 23:03:48.395440581 -0600
++++ xv6-public-orig/sysfile.c	2017-11-24 18:58:26.173551248 -0600
+@@ -297,11 +297,7 @@
+   begin_op();
+ 
+   if(omode & O_CREATE){
+-    if(omode & O_EXTENT)
+-      ip = create(path, T_EXT_FILE, 0, 0);
+-    else
+       ip = create(path, T_FILE, 0, 0);
+-
+     if(ip == 0){
+       end_op();
+       return -1;
+@@ -448,20 +444,9 @@
+   return 0;
+ }
+ 
+-int
+-sys_lseek(void)
++off_t
++sys_lseek(int fd, off_t offset)
+ {
+-  struct file *f;
+-  uint n;
+-
+-  // get params
+-  if(argfd(0, 0, &f) < 0 || argint(1, (int*)&n) < 0)
+-    return -1;
+-
+-  //offset must be within file
+-  if(n < 0 || n > f->ip->size)
++  printf(1, "lseek() not implemented");
+     return -1;
+-  //f->off = n;
+-  //return f->off;
+-  return f->off = n;
+ }
+diff -uw Desktop/xv6/types.h xv6-public-orig/types.h
+--- Desktop/xv6/types.h	2017-11-28 23:39:08.171904481 -0600
++++ xv6-public-orig/types.h	2017-10-07 19:17:23.735655476 -0500
+@@ -2,4 +2,3 @@
+ typedef unsigned short ushort;
+ typedef unsigned char  uchar;
+ typedef uint pde_t;
+-typedef int off_t;
+diff -uw Desktop/xv6/user.h xv6-public-orig/user.h
+--- Desktop/xv6/user.h	2017-11-28 22:21:55.078889751 -0600
++++ xv6-public-orig/user.h	2017-11-24 18:29:49.437095559 -0600
+@@ -23,7 +23,7 @@
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
+-off_t lseek(int fd, off_t off);
++int lseek(int fd, off_t offset);
+ 
+ // ulib.c
+ int stat(char*, struct stat*);
