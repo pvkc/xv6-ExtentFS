@@ -297,7 +297,11 @@ sys_open(void)
   begin_op();
 
   if(omode & O_CREATE){
-    ip = create(path, T_FILE, 0, 0);
+    if(omode & O_EXTENT)
+      ip = create(path, T_EXT_FILE, 0, 0);
+    else
+      ip = create(path, T_FILE, 0, 0);
+
     if(ip == 0){
       end_op();
       return -1;
@@ -442,4 +446,22 @@ sys_pipe(void)
   fd[0] = fd0;
   fd[1] = fd1;
   return 0;
+}
+
+int
+sys_lseek(void)
+{
+  struct file *f;
+  uint n;
+
+  // get params
+  if(argfd(0, 0, &f) < 0 || argint(1, (int*)&n) < 0)
+    return -1;
+
+  //offset must be within file
+  if(n < 0 || n > f->ip->size)
+    return -1;
+  //f->off = n;
+  //return f->off;
+  return f->off = n;
 }

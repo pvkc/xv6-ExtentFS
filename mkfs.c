@@ -6,6 +6,7 @@
 #include <assert.h>
 
 #define stat xv6_stat  // avoid clash with host struct stat
+#define off_t xv6_off_t
 #include "types.h"
 #include "fs.h"
 #include "stat.h"
